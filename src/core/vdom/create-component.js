@@ -1,11 +1,34 @@
 /* @flow */
 
-import VNode from './vnode'
+import {
+  warn,
+  isObject,
+  hasOwn,
+  hyphenate,
+  validateProp,
+  toNumber,
+  _toString,
+  looseEqual,
+  emptyObject,
+  looseIndexOf
+} from '../util/index'
+
+import VNode, {
+  createTextVNode,
+  createEmptyVNode
+} from '../vdom/vnode'
+
 import { resolveConstructorOptions } from '../instance/init'
 import { activeInstance, callHook } from '../instance/lifecycle'
-import { resolveSlots } from '../instance/render-helpers/resolve-slots'
 import { createElement } from './create-element'
-import { warn, isObject, hasOwn, hyphenate, validateProp } from '../util/index'
+import { resolveSlots } from '../instance/render-helpers/resolve-slots'
+import { renderList } from '../instance/render-helpers/render-list'
+import { renderSlot } from '../instance/render-helpers/render-slot'
+import { resolveFilter } from '../instance/render-helpers/resolve-filter'
+import { checkKeyCodes } from '../instance/render-helpers/check-keycodes'
+import { bindObjectProps } from '../instance/render-helpers/bind-object-props'
+import { renderStatic, markOnce } from '../instance/render-helpers/render-static'
+import { resolveScopedSlots } from '../instance/render-helpers/resolve-slots'
 
 const hooks = { init, prepatch, insert, destroy }
 const hooksToMerge = Object.keys(hooks)
@@ -102,8 +125,9 @@ function createFunctionalComponent (
   context: Component,
   children: ?Array<VNode>
 ): VNode | void {
+  const options = Ctor.options
   const props = {}
-  const propOptions = Ctor.options.props
+  const propOptions = options.props
   if (propOptions) {
     for (const key in propOptions) {
       props[key] = validateProp(key, propOptions, propsData)
@@ -113,13 +137,52 @@ function createFunctionalComponent (
   // gets a unique context - this is necessary for correct named slot check
   const _context = Object.create(context)
   const h = (a, b, c, d) => createElement(_context, a, b, c, d, true)
-  const vnode = Ctor.options.render.call(null, h, {
+
+  const renderContext: Object = {
     props,
     data,
     parent: context,
     children,
     slots: () => resolveSlots(children, context)
-  })
+  }
+
+  // functional template runtime check
+  if (process.env.NODE_ENV !== 'production' && options.template) {
+    return warn(
+      'Vue templates with functional components are not supported with runtime build.'
+    )
+  }
+
+  // functional compiled template
+  if (options.compiled) {
+    renderContext.$slots = renderContext.slots()
+    renderContext.$scopedSlots = data.scopedSlots || emptyObject
+    renderContext._o = markOnce
+    renderContext._n = toNumber
+    renderContext._s = _toString
+    renderContext._l = renderList
+    renderContext._q = looseEqual
+    renderContext._i = looseIndexOf
+    renderContext._f = resolveFilter
+    renderContext._k = checkKeyCodes
+    renderContext._v = createTextVNode
+    renderContext._e = createEmptyVNode
+    renderContext._u = resolveScopedSlots
+    // Apply context to render helpers
+    renderContext._c = (a, b, c, d) => createElement(renderContext, a, b, c, d, false)
+    renderContext._t = (a, b, c, d) => renderSlot.call(renderContext, a, b, c, d)
+    renderContext._m = (a, b) => renderStatic.call(renderContext, a, b)
+    renderContext._b = (a, b, c, d) => bindObjectProps.call(renderContext, a, b, c, d)
+
+    // Add static nodes
+    renderContext._staticTrees = []
+    const staticRenderFns = options.staticRenderFns || []
+    for (let i = 0; i < staticRenderFns.length; i++) {
+      renderContext._staticTrees.push(staticRenderFns[i](null, renderContext))
+    }
+  }
+
+  const vnode = options.render.call(null, h, renderContext)
   if (vnode instanceof VNode) {
     vnode.functionalContext = context
     if (data.slot) {

@@ -173,5 +173,6 @@ declare type SFCBlock = {
   lang?: string;
   src?: string;
   scoped?: boolean;
+  functional?: boolean;
   module?: string | boolean;
 }
