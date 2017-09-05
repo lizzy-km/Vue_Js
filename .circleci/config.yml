@@ -75,8 +75,14 @@ jobs:
       - *attach_workspace
       - *load_code
       - run:
-          name: "Testing lint / flow / types"
-          command: npm run lint && npm run flow && npm run test:types
+          name: "lint"
+          command: npm run lint
+      - run:
+          name: "flow"
+          command: npm run flow
+      - run:
+          name: "typescript types"
+          command: npm run test:types
 
   test_coverage:
     <<: *container_config
@@ -84,33 +90,35 @@ jobs:
       - *attach_workspace
       - *load_code
       - run:
-          name: "Testing coverage"
+          name: "test:cover"
           command: npm run test:cover
       - run:
-          command: | # report coverage stats for non-PRs
+          name: "Reporting coverage"
+          command: |
             if [[ -z $CI_PULL_REQUEST ]]; then
               cat ~/root/vue/coverage/lcov.info | ~/root/vue/node_modules/.bin/codecov
             fi
-  test_e2e-weex:
-    <<: *container_config
-    steps:
-      - *attach_workspace
-      - *load_code
-      - run:
-          name: "Testing end-to-end"
-          command: npm run test:e2e -- --env phantomjs
-      - run:
-          name: "Testing Weex"
-          command: npm run test:weex
 
-  test_ssr:
+  test_e2e:
     <<: *container_config
     steps:
       - *attach_workspace
       - *load_code
       - run:
-          name: "Testing server-side rendering"
+          name: "test:e2e"
+          command: npm run test:e2e -- --env phantomjs
+
+  test_ssr_weex:
+    <<: *container_config
+    steps:
+      - *attach_workspace
+      - *load_code
+      - run:
+          name: "test:ssr"
           command: npm run test:ssr
+      - run:
+          name: "test:weex"
+          command: npm run test:weex
 
 # Define the workflow for testing: Checkout code, then get dependencies, then run all testing containers in parallel
 workflows:
@@ -125,15 +133,15 @@ workflows:
           requires:
             - checkout_code
             - node_dependencies
-      - test_coverage:
+      - test_coverag:
           requires:
             - checkout_code
             - node_dependencies
-      - test_e2e-weex:
+      - test_e2e:
           requires:
             - checkout_code
             - node_dependencies
-      - test_ssr:
+      - test_ssr_weex:
           requires:
             - checkout_code
             - node_dependencies
