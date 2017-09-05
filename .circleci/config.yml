@@ -133,7 +133,7 @@ workflows:
           requires:
             - checkout_code
             - node_dependencies
-      - test_coverag:
+      - test_coverage:
           requires:
             - checkout_code
             - node_dependencies
