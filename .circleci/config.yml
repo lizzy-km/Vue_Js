@@ -65,7 +65,7 @@ jobs:
       - persist_to_workspace:
           root: *workspace_root
           paths:
-            - node_modules
+            - vue/node_modules
 
   # Tests are split below by amount of time to run--coverage tends to take the longest
   # Maximum of 4 concurrent testing containers for OSS projects on CircleCI, otherwise queueing occurs
