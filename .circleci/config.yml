@@ -27,27 +27,14 @@ jobs:
           root: ~/project
           paths:
             - vue
-  lint:
-    <<: *defaults
-    steps:
-      - attach_workspace:
-          at: ~/project
-      - run:
-          command: npm run lint
 
-  flow-check:
+  lint-flow-types:
     <<: *defaults
     steps:
       - attach_workspace:
           at: ~/project
-      - run:
-          command: node_modules/.bin/flow check
-
-  test-types:
-    <<: *defaults
-    steps:
-      - attach_workspace:
-          at: ~/project
+      - run: npm run lint
+      - run: node_modules/.bin/flow check
       - run: npm run test:types
 
   test-cover:
@@ -62,6 +49,7 @@ jobs:
            if [[ -z $CI_PULL_REQUEST ]]; then
              cat ./coverage/lcov.info | ./node_modules/.bin/codecov
            fi
+
   test-e2e:
     <<: *defaults
     steps:
@@ -69,18 +57,12 @@ jobs:
           at: ~/project
       - run: npm run test:e2e -- --env phantomjs
 
-  test-ssr:
+  test-ssr-weex:
     <<: *defaults
     steps:
       - attach_workspace:
           at: ~/project
       - run: npm run test:ssr
-
-  test-weex:
-    <<: *defaults
-    steps:
-      - attach_workspace:
-          at: ~/project
       - run: npm run test:weex
 
 workflows:
@@ -88,24 +70,15 @@ workflows:
   install-and-parallel-test:
     jobs:
       - install
-      - lint:
-          requires:
-            - install
-      - flow-check:
-          requires:
-            - install
-      - test-types:
-          requires:
-            - install
       - test-cover:
+          requires:
+            - install
+      - lint-flow-types:
           requires:
             - install
       - test-e2e:
           requires:
             - install
-      - test-ssr:
-          requires:
-            - install
-      - test-weex:
+      - test-ssr-weex:
           requires:
             - install
