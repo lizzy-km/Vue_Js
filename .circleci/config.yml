@@ -1,147 +1,110 @@
 version: 2
 
-
-references:
-  # Define node image to be used for all tests
-  container_config: &container_config
-    working_directory: ~/root/vue
-    docker:
-      - image: circleci/node:6
-  # Define workspace folder where code and dependencies will be introduced once and then cached/shared in tests
-  workspace_root: &workspace_root
-    /tmp/workspace
-  attach_workspace: &attach_workspace
-    attach_workspace:
-      at: *workspace_root
-  # Move all files and dotfiles to current working_directory
-  load_code: &load_code
-    run:
-      name: load code from workspace
-      command: |
-        mv /tmp/workspace/vue/* /tmp/workspace/vue/.[!.]* .
-  js_cache_key: &js_cache_key
-    key: npm-dependency-cache-{{ checksum "package.json" }}
-  # Move dependencies to current working_directory
-  restore_node_modules: &restore_node_modules
-    run:
-      name: Restore npm dependencies from workspace
-      command: mv /tmp/workspace/node_modules ./
+defaults: &defaults
+  working_directory: ~/project/vue
+  docker:
+    - image: circleci/node:6-browsers
 
 jobs:
-
-  # Checkout code and move to workspace
-  checkout_code:
-    <<: *container_config
+  install:
+    <<: *defaults
     steps:
       - checkout
-      - run:
-          command: |
-            mkdir -p /tmp/workspace/vue
-            mv * .[!.]* /tmp/workspace/vue/
-      - persist_to_workspace:
-          root: *workspace_root
-          paths:
-            - vue
-
-  # Restore, update, and save a new dependencies cache
-  node_dependencies:
-    <<: *container_config
-    steps:
-      - *attach_workspace
-      - *load_code
       - restore_cache:
-          <<: *js_cache_key
+          keys:
+            - v1-vue-{{ .Branch }}-{{ checksum "package-lock.json" }}
+            - v1-vue-{{ .Branch }}-
+            - v1-vue-
       - run:
-          name: Update/install dependencies
+          name: Install Dependencies
           command: npm install
       - save_cache:
-          <<: *js_cache_key
+          key: v1-vue-{{ .Branch }}-{{ checksum "package-lock.json" }}
           paths:
-            - ~/root/vue/node_modules
-      - run:
-          name: Move dependencies to workspace
-          command: |
-            mv node_modules /tmp/workspace/vue/
+            - node_modules/
       - persist_to_workspace:
-          root: *workspace_root
+          root: ~/project
           paths:
-            - vue/node_modules
-
-  # Tests are split below by amount of time to run--coverage tends to take the longest
-  # Maximum of 4 concurrent testing containers for OSS projects on CircleCI, otherwise queueing occurs
-  test_lint-flow-types:
-    <<: *container_config
+            - vue
+  lint:
+    <<: *defaults
     steps:
-      - *attach_workspace
-      - *load_code
+      - attach_workspace:
+          at: ~/project
       - run:
-          name: "lint"
           command: npm run lint
-      - run:
-          name: "flow"
-          command: npm run flow
-      - run:
-          name: "typescript types"
-          command: npm run test:types
 
-  test_coverage:
-    <<: *container_config
+  flow-check:
+    <<: *defaults
     steps:
-      - *attach_workspace
-      - *load_code
+      - attach_workspace:
+          at: ~/project
       - run:
-          name: "test:cover"
-          command: npm run test:cover
-      - run:
-          name: "Reporting coverage"
-          command: |
-            if [[ -z $CI_PULL_REQUEST ]]; then
-              cat ~/root/vue/coverage/lcov.info | ~/root/vue/node_modules/.bin/codecov
-            fi
+          command: node_modules/.bin/flow check
 
-  test_e2e:
-    <<: *container_config
+  test-types:
+    <<: *defaults
     steps:
-      - *attach_workspace
-      - *load_code
-      - run:
-          name: "test:e2e"
-          command: npm run test:e2e -- --env phantomjs
+      - attach_workspace:
+          at: ~/project
+      - run: npm run test:types
 
-  test_ssr_weex:
-    <<: *container_config
+  test-cover:
+    <<: *defaults
     steps:
-      - *attach_workspace
-      - *load_code
+      - attach_workspace:
+          at: ~/project
+      - run: npm run test:cover
       - run:
-          name: "test:ssr"
-          command: npm run test:ssr
-      - run:
-          name: "test:weex"
-          command: npm run test:weex
+         name: report coverage stats for non-PRs
+         command: |
+           if [[ -z $CI_PULL_REQUEST ]]; then
+             cat ./coverage/lcov.info | ./node_modules/.bin/codecov
+           fi
+  test-e2e:
+    <<: *defaults
+    steps:
+      - attach_workspace:
+          at: ~/project
+      - run: npm run test:e2e -- --env phantomjs
 
-# Define the workflow for testing: Checkout code, then get dependencies, then run all testing containers in parallel
+  test-ssr:
+    <<: *defaults
+    steps:
+      - attach_workspace:
+          at: ~/project
+      - run: npm run test:ssr
+
+  test-weex:
+    <<: *defaults
+    steps:
+      - attach_workspace:
+          at: ~/project
+      - run: npm run test:weex
+
 workflows:
   version: 2
-  build_and_test:
+  install-and-parallel-test:
     jobs:
-      - checkout_code
-      - node_dependencies:
+      - install
+      - lint:
           requires:
-            - checkout_code
-      - test_lint-flow-types:
+            - install
+      - flow-check:
           requires:
-            - checkout_code
-            - node_dependencies
-      - test_coverage:
+            - install
+      - test-types:
           requires:
-            - checkout_code
-            - node_dependencies
-      - test_e2e:
+            - install
+      - test-cover:
           requires:
-            - checkout_code
-            - node_dependencies
-      - test_ssr_weex:
+            - install
+      - test-e2e:
           requires:
-            - checkout_code
-            - node_dependencies
+            - install
+      - test-ssr:
+          requires:
+            - install
+      - test-weex:
+          requires:
+            - install
